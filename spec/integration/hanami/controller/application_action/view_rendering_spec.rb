@@ -35,6 +35,7 @@ RSpec.describe "View rendering in application actions", :application_integration
               include Deps[view: "views.test_view"]
 
               def handle(req, res)
+                res[:job] = "Singer"
                 res.render view, name: req.params[:name]
               end
             end
@@ -73,7 +74,7 @@ RSpec.describe "View rendering in application actions", :application_integration
         module Main
           module Views
             class TestView < Main::View
-              expose :name
+              expose :name, :job
             end
           end
         end
@@ -89,6 +90,7 @@ RSpec.describe "View rendering in application actions", :application_integration
         h1 Hello, #{name}
         - request.params.to_h.values.sort.each do |value|
           p = value
+        p = job
       SLIM
 
       require "hanami/init"
@@ -97,7 +99,7 @@ RSpec.describe "View rendering in application actions", :application_integration
       response = action.(name: "Jennifer", last_name: "Lopez")
       rendered = response.body[0]
 
-      expect(rendered).to eq "<html><body><h1>Hello, Jennifer</h1><p>Jennifer</p><p>Lopez</p></body></html>"
+      expect(rendered).to eq "<html><body><h1>Hello, Jennifer</h1><p>Jennifer</p><p>Lopez</p><p>Singer</p></body></html>"
     end
   end
 end
