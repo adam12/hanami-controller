@@ -6,7 +6,7 @@ RSpec.describe Hanami::Action::Response do
       described_class.new(
         request: request,
         action: "action",
-        configuration: Hanami::Controller::Configuration.new, env: env,
+        configuration: Hanami::Action::Configuration.new, env: env,
         view_options: view_options
       )
     }
@@ -22,7 +22,8 @@ RSpec.describe Hanami::Action::Response do
       if expected_view_args.any?
         allow(view).to receive(:call).with(**expected_view_args) { rendered }
       else
-        allow(view).to receive(:call).with(no_args) { rendered }
+        args = RUBY_VERSION >= "2.7" ? no_args : {}
+        allow(view).to receive(:call).with(args) { rendered }
       end
     end
 
@@ -78,7 +79,7 @@ RSpec.describe Hanami::Action::Response do
       described_class.new(
         request: double(:request),
         action: "action",
-        configuration: Hanami::Controller::Configuration.new, env: env
+        configuration: Hanami::Action::Configuration.new, env: env
       )
     }
     let(:env) { { "REQUEST_METHOD" => "GET" } }

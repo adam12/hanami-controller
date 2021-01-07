@@ -1,5 +1,4 @@
 require 'hanami/action'
-require 'hanami/controller/configuration'
 require 'hanami/controller/version'
 require 'hanami/controller/error'
 
@@ -43,22 +42,6 @@ module Hanami
       # @api private
       def initialize(format)
         super("Cannot find a corresponding Mime type for '#{ format }'. Please configure it with Hanami::Controller::Configuration#format.")
-      end
-    end
-
-    # Missing session error
-    #
-    # This error is raised when an action sends either `session` or `flash` to
-    # itself and it does not include `Hanami::Action::Session`.
-    #
-    # @since 1.2.0
-    #
-    # @see Hanami::Action::Session
-    # @see Hanami::Action#session
-    # @see Hanami::Action#flash
-    class MissingSessionError < Hanami::Controller::Error
-      def initialize(session_method)
-        super("To use `#{session_method}', add `include Hanami::Action::Session`.")
       end
     end
   end

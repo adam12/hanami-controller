@@ -11,8 +11,8 @@ require 'hanami/utils/string'
 require 'hanami/utils/kernel'
 require 'rack/utils'
 
-require_relative '../controller/configuration'
 require_relative 'base_params'
+require_relative 'configuration'
 require_relative 'halt'
 require_relative 'mime'
 require_relative 'rack/file'
@@ -28,6 +28,12 @@ module Hanami
       end
 
       module ClassMethods
+        def configuration
+          @configuration ||= Configuration.new
+        end
+
+        alias_method :config, :configuration
+
         # Override Ruby's hook for modules.
         # It includes basic Hanami::Action modules to the given class.
         #
@@ -49,6 +55,8 @@ module Hanami
               include Validatable if defined?(Validatable)
             end
           end
+
+          subclass.instance_variable_set '@configuration', configuration.dup
         end
 
         # Returns the class which defines the params
@@ -68,11 +76,6 @@ module Hanami
         # FIXME: make this thread-safe
         def accepted_formats
           @accepted_formats ||= []
-        end
-
-        # FIXME: make this thread-safe
-        def handled_exceptions
-          @handled_exceptions ||= {}
         end
 
         # Define a callback for an Action.
@@ -244,66 +247,24 @@ module Hanami
           before :enforce_accepted_mime_types
         end
 
-        # Handle the given exception with an HTTP status code.
-        #
-        # When the exception is raise during #call execution, it will be
-        # translated into the associated HTTP status.
-        #
-        # This is a fine grained control, for a global configuration see
-        # Hanami::Action.handled_exceptions
-        #
-        # @param exception [Hash] the exception class must be the key and the
-        #   HTTP status the value of the hash
-        #
-        # @since 0.1.0
-        #
-        # @see Hanami::Action.handled_exceptions
-        #
-        # @example
-        #   require 'hanami/controller'
-        #
-        #   class Show
-        #     include Hanami::Action
-        #     handle_exception RecordNotFound => 404
-        #
-        #     def call(params)
-        #       # ...
-        #       raise RecordNotFound.new
-        #     end
-        #   end
-        #
-        #   Show.new.call({id: 1}) # => [404, {}, ['Not Found']]
-        def handle_exception(exception)
-          handled_exceptions.merge!(exception)
-        end
-
         # Returns a new action
         #
-        # @overload new(**args)
-        #   @param args [Hash] action dependencies
+        # @overload new(**deps, ...)
+        #   @param deps [Hash] action dependencies
         #
-        # @overload new(configuration:, **args)
+        # @overload new(configuration:, **deps, ...)
         #   @param configuration [Hanami::Controller::Configuration] action configuration
-        #   @param args [Hash] action dependencies
+        #   @param deps [Hash] action dependencies
         #
         # @return [Hanami::Action] Action object
         #
         # @since 2.0.0
-        def new(configuration: Hanami::Controller::Configuration.new, **args)
+        def new(*args, configuration: self.configuration, **kwargs, &block)
           allocate.tap do |obj|
             obj.instance_variable_set(:@name, Name[name])
-            obj.instance_variable_set(:@configuration, configuration)
+            obj.instance_variable_set(:@configuration, configuration.dup.finalize!)
             obj.instance_variable_set(:@accepted_mime_types, Mime.restrict_mime_types(configuration, accepted_formats))
-            obj.instance_variable_set(
-              :@handled_exceptions,
-              ::Hash[
-                configuration
-                .handled_exceptions
-                .merge(handled_exceptions)
-                .sort{ |(ex1,_),(ex2,_)| ex1.ancestors.include?(ex2) ? -1 : 1 }
-              ]
-            )
-            obj.send(:initialize, **args)
+            obj.send(:initialize, *args, **kwargs, &block)
             obj.freeze
           end
         end
@@ -316,7 +277,7 @@ module Hanami
           end
 
           class << self
-            alias [] call
+            alias_method :[], :call
           end
         end
       end
@@ -342,7 +303,7 @@ module Hanami
                 configuration: configuration,
                 content_type: Mime.calculate_content_type_with_charset(configuration, request, accepted_mime_types),
                 env: env,
-                header: configuration.default_headers
+                headers: configuration.default_headers
               )
 
               _run_before_callbacks(request, response)
@@ -358,18 +319,6 @@ module Hanami
 
         def initialize(**deps)
           @_deps = deps
-        end
-
-        # Returns a new copy of the action with new arguments merged with those
-        # previously passed to `.new`
-        #
-        # @param new_args [Hash] new arguments
-        #
-        # @return [Hanami::Action] New action object
-        #
-        # @since 2.0.0
-        def with(**new_args)
-          self.class.new(@_deps.merge(new_args))
         end
 
         protected
@@ -400,7 +349,6 @@ module Hanami
         #
         # @since 0.2.0
         #
-        # @see Hanami::Controller#handled_exceptions
         # @see Hanami::Action::Throwable#handle_exception
         # @see Hanami::Http::Status:ALL
         #
@@ -453,10 +401,8 @@ module Hanami
           Mime.accepted_mime_type?(req, accepted_mime_types, configuration) or halt 406
         end
 
-        attr_reader :handled_exceptions
-
         def exception_handler(exception)
-          handled_exceptions.each do |exception_class, handler|
+          configuration.handled_exceptions.each do |exception_class, handler|
             return handler if exception.kind_of?(exception_class)
           end
 
@@ -603,28 +549,6 @@ module Hanami
           else
             raise Hanami::Controller::UnknownFormatError.new(value)
           end
-        end
-
-        # Raise error when `Hanami::Action::Session` isn't included.
-        #
-        # To use `session`, include `Hanami::Action::Session`.
-        #
-        # @raise [Hanami::Controller::MissingSessionError]
-        #
-        # @since 1.2.0
-        def session
-          raise Hanami::Controller::MissingSessionError.new(:session)
-        end
-
-        # Raise error when `Hanami::Action::Session` isn't included.
-        #
-        # To use `flash`, include `Hanami::Action::Session`.
-        #
-        # @raise [Hanami::Controller::MissingSessionError]
-        #
-        # @since 1.2.0
-        def flash
-          raise Hanami::Controller::MissingSessionError.new(:flash)
         end
 
         # Finalize the response
